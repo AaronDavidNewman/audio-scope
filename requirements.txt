@@ -3,3 +3,4 @@ matplotlib
 scipy
 pygame
 PyAudio
+requests

@@ -9,10 +9,10 @@ from tkinter import TclError
 
 if len(sys.argv) < 2:
     print(f'Plays a wave file. Usage: {sys.argv[0]} filename.wav')
-    filename="air-breath2.wav"
+    # filename="air-breath2.wav"
     # filename="poly1.wav"
     #  filename="noogarpy.wav"
-    # filename="ween24-2.wav"
+    filename="ween24-2.wav"
 else:
    filename = sys.argv[1]
 
@@ -24,7 +24,7 @@ imagesize = 512
 frameskip = 1
 bunch = 15
 thetamax = 2*np.pi
-folder = './output/'
+folder = './masks/'
 
 for fn in os.listdir(folder):
    filepath = os.path.join(folder, fn)
@@ -47,7 +47,7 @@ def plotPolarScatterArray(axis, xarray, yarray, colors, sizes):
   axis.scatter(xarray, yarray, c=colors, s=sizes)
    
 def plotPolarBarArray(axis, xarray, yarray, colors, sizes):
-  argbary = np.sort(np.argpartition(yar, -5)[-5:])
+  argbary = np.sort(np.argpartition(yarray, -5)[-5:])
   bary = np.array(yarray)[argbary.astype(int)]
   barx = np.array(xarray)[argbary.astype(int)]
   barcounts = np.array(sizes)[argbary.astype(int)]
@@ -65,9 +65,10 @@ def fft_plot(audio, sample_rate):
   # average the stereo values and truncate the array so each window is the same size
   stereo_avg = np.mean(audio, axis=1)
   audio_windows = truncateArrayForWindows(stereo_avg, windows)
+  window_count = len(audio_windows)
 
   #calculate the max amplitude in each window and overall, to normalize
-  for x in range(0, len(audio_windows)):
+  for x in range(0, window_count):
      xe = np.sqrt(np.mean(audio_windows[x] ** 2))
      if xe > maxEnergy:
         maxEnergy = xe
@@ -76,7 +77,7 @@ def fft_plot(audio, sample_rate):
   xenergy = xenergy/maxEnergy
 
   # added this loop, removed original code
-  for x in range(0, len(audio_windows)):
+  for x in range(0, window_count):
     # don't make an image for every sampling window, but we combine
     # windows
     if x % frameskip != 0:
@@ -88,15 +89,13 @@ def fft_plot(audio, sample_rate):
     fig.set_frameon(False)
     dpi = fig.figure.get_dpi()
     fig.set_size_inches(512/dpi, 512/dpi)
-    ax.set_axis_off()
-    
+    ax.set_axis_off()    
     counts = np.zeros(imagesize)
     # combine 'bunch' windows into a single image
     for subplt in range(0, bunch):
       yar=[]
       colors=[]
       # make dot sizes bigger when there are multiples of same frequency
-      # ix = x - (frameskip // bunch) * (bunch - subplt)
       ix = np.max([x - (bunch - subplt), 0])
       y_window = np.abs(rfft(audio_windows[ix]))
       y_max = np.max([np.max(y_window), 1])
@@ -104,22 +103,26 @@ def fft_plot(audio, sample_rate):
       # limit ourselves to the interesting human hearing frequencies
       y_window = y_window[0:2048]
       y_freq = truncateArrayForWindows(y_window, imagesize)
-      y_freq = np.mean(y_freq, axis=1)
-      max_freq = np.max([np.max(y_freq), 1])
-      normalized_freq = y_freq / max_freq
+
       # normalize the frequency so it falls between 0 and image size, since we have a limited image size
       # and also so that the average volume of this sample 
-      # y_freq = np.subtract(subtr, np.around(y_freq * xenergy[x] * (imagesize/(sample_rate / 2))))
-      #y_max = np.max(y_freq)
+      y_freq = np.mean(y_freq, axis=1)
+      max_freq = np.max([np.max(y_freq), 1])
+      # use sqrt so the dots and up being close to the same size
+      normalized_freq = np.pow((y_freq / max_freq), 1./4)
+
+      # rotate by an offset for each window in a batch to get a 'sweeping' effect
+      xOffset = int((subplt / bunch) * imagesize)
       for x_freq in range(0,imagesize):
-        yar.append(y_freq[x_freq] * (imagesize / max_freq) * xenergy[x])
-        counts[x_freq] += dotsize * ((normalized_freq[x_freq] * xenergy[x]) / bunch)
-        color = 1 - (xenergy[x]) * normalized_freq[x_freq]
+        x_index = (x_freq + xOffset) % imagesize
+        yar.append(y_freq[x_index] * (imagesize / max_freq) * xenergy[x])
+        counts[x_index] += dotsize * ((normalized_freq[x_index] * xenergy[x]) / bunch)
+        color = 1 - (xenergy[x]) * normalized_freq[x_index]
         colors.append([color, color, color])        
       # ax.plot(xar, yar, label='', linestyle=(0,(1,10)))
       # ax.scatter(xar, yar, c=colors, s=counts)
-      plotPolarBarArray(axis=ax, xarray=xar, yarray=yar, colors=colors, sizes=counts)
-    filename = './output/figure_' + str(x)
+      plotPolarScatterArray(axis=ax, xarray=xar, yarray=yar, colors=colors, sizes=counts)
+    filename = f'{folder}figure_{str(x)}'
     fig.savefig(filename)
     plt.close()
     
@@ -130,7 +133,6 @@ def fft_plot(audio, sample_rate):
 lchannel, rchannel = audio_time_series.T
 avgamp=(lchannel + rchannel)/2
 length = audio_time_series.shape[0] / sample_rate
-time = np.linspace(0., length, audio_time_series.shape[0])
 # plt.show()
 # Changed from single_sample_data -> audio_time_series
 fft_plot(audio_time_series, sample_rate)
