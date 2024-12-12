@@ -5,6 +5,11 @@ import io
 import numpy as np
 from PIL import Image, PngImagePlugin
 
+# some ffmpeg commands to use:
+# ffmpeg -r 5  -start_number 1 -i "image%04d.png" -c:v libx264 out.mp4
+# ffmpeg -i input.mov -vf minterpolate=fps=30 output.mov
+# This is the file that generates the SD images.  It assumes that masks have already been created
+# from the sound file by importwave.py.
 
 def getImageEncoding(fn):
   with open(fn, "rb") as image_file:
@@ -85,54 +90,74 @@ prompts = {
         12: " oil painting portrait of a man with a grey beard and blue eyes, is looking at the camera with a serious look on his face, grey hair, wearing a cotton sweater  --neg ",
         13: " a horror movie still of a man with his mouth open, glowing, green eyes with bloody red pupils, an elongated, stretched face, head with green and red eyes, bright orange and black fire background, horror, alien, realistic, 3-d animation --neg "
     }
-sourceImageCount = 363
+sourceImageCount = 905
 promptCount = 13
-mask_count = 356
+mask_count = 905
+sdSkip = 5
+sd_image_count = mask_count
 srcImageCount = 13
 maxIterations = int(np.max(np.array([sourceImageCount, mask_count, promptCount ])))
 frameSpace = np.linspace(1, sourceImageCount, maxIterations)
 promptSpace = np.linspace(1, promptCount, maxIterations)
 maskSpace = np.linspace(1, mask_count, maxIterations)
+sdImageSpace = np.linspace(1, mask_count, maxIterations)
 srcImageSpace = np.linspace(1, srcImageCount, maxIterations)
 lastPrompt = prompts[1]
 denoise = 0.05
 denoise_delta = 0.05
-denoise_max = 0.6
+denoise_max = 0.2
 framesSinceChange = 0
-framesPerImage = int(1 + (356 / 13))
 sdDestFn = None
-for x in range(mask_count):
+prevMaskIx = None
+for x in range(maxIterations):
+  # the prompt used for stable diffusion
   promptIx = int(promptSpace[x])
+  # the frame from original video
   frameIx = int(frameSpace[x])
+  # the source of original art to create diffusions from
   srcImageIx = int(srcImageSpace[x])
+  # the source of masks generated for the sound file.  We assume the mask
+  # and sd image size is the same since there is an image generated for every sample.
+  # i.e. there could be many frames for a single sd image and mask
   maskIx = int(maskSpace[x])
-  prompt = prompts[promptIx]
-  if denoise_delta + denoise > denoise_max or denoise_delta + denoise < 0.05:
-    denoise_delta = -1 * denoise_delta
-  denoise = denoise + denoise_delta
-  if prompt != lastPrompt:
-    print(f'prompt is now {prompt}')
+  if prevMaskIx == None or prevMaskIx != maskIx:
+    prevMaskIx = maskIx
+    prompt = prompts[promptIx]
+    if denoise_delta + denoise > denoise_max or denoise_delta + denoise < 0.05:
+      denoise_delta = -1 * denoise_delta
+    denoise = denoise + denoise_delta
+    if prompt != lastPrompt:
+      print(f'prompt is now {prompt}')
 
-  lastPrompt = prompt
-  srcFn = f'{srcImageFolder}c{srcImageIx}.png'
-  maskFn = f'{maskFolder}figure_{maskIx}.png'
+    lastPrompt = prompt
+    srcFn = f'{srcImageFolder}c{srcImageIx}.png'
+    sdDestFn = f'{sdDestFolder}img{maskIx:04d}.png'
+    if createSd:
+      if x % sdSkip == 0 or x < 2:
+        if x > 0:
+          sdPriorFn = f'{sdDestFolder}img{(maskIx - 1):04d}.png'
+          srcImage = blendImages(srcFn, sdPriorFn)
+        else:
+          srcImage = getImageEncoding(srcFn)
+        callApi(srcImage, prompt, sdDestFn, denoise)
+      else:
+        nm1 = maskIx - 1
+        nm2 = maskIx - 2
+        fn1 = f'{sdDestFolder}img{nm1:04d}.png'
+        fn2 = f'{sdDestFolder}img{nm2:04d}.png'
+        with Image.open(fn1) as prev1, Image.open(fn2) as prev2:
+          blended = Image.blend(prev1, prev2, 0.2)
+          blended.save(sdDestFn)
+
+
   srcFrameFn = f'{framesFolder}filename{frameIx:04d}.png'  
-  if createSd:
-    if sdDestFn:
-      srcImage = blendImages(srcFn, sdDestFn)
-    else:
-      srcImage = getImageEncoding(srcFn)
-
-  sdDestFn = f'{sdDestFolder}img{x:04d}.png'
-  if createSd:
-    print(f'image {x} denoise {denoise}')
-    callApi(srcImage, prompt, sdDestFn, denoise)
-  
+  maskFn = f'{maskFolder}figure_{maskIx}.png'
   with Image.open(maskFn) as maskImage, Image.open(sdDestFn) as sdImage, Image.open(srcFrameFn) as frameImage:
       imgsize = int(np.min(np.array([frameImage.width, frameImage.height])))
       frameImage = frameImage.resize((512, 512)).convert("RGB")
       combined = Image.composite(sdImage, frameImage, maskImage)
       destFn = f'{destFolder}image{x:04d}.png'
+      combined = combined.resize((1920, 1080))
       combined.save(destFn)
 
 
