@@ -43,8 +43,8 @@ def calculateNoteFrequencies(ova, ar, namear):
       base = START_FREQ * np.pow(2, oo)
       for step in range(STEPS_PER_OCTAVE):
           ix = STEPS_PER_OCTAVE * oo + step
-          oolbl = oo
-          # by convention, octaves start at 2, ie. A1 is above C1, so compensate here
+          oolbl = oo + 1
+          # by convention, octaves start at C, ie. A1 is above C1, so compensate here
           if step > 3:
              oolbl = oolbl + 1
           noteName = f'{LETTER_NAMES[step]} {oolbl}'
