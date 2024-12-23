@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 from scipy.fft import rfft, fft
 from scipy.io import wavfile
 from tkinter import TclError
+# this file is no longer used and will be removed...
 
 if len(sys.argv) < 2:
     print(f'Plays a wave file. Usage: {sys.argv[0]} filename.wav')
@@ -85,7 +86,7 @@ def fft_plot(audio, sample_rate):
     fig.set_frameon(False)
     dpi = fig.figure.get_dpi()
     fig.set_size_inches(512/dpi, 512/dpi)
-    ax.set_axis_off()    
+    ax.set_axis_off()
     counts = np.zeros(imagesize)
     xOffset = (xOffset + 1) % imagesize
     # combine 'bunch' windows into a single image
