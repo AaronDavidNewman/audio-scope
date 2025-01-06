@@ -76,6 +76,12 @@ LETTER_NAMES = ['A', 'Bb', 'B' ,'C', 'Db', 'D', 'Eb', 'E', 'F', 'F#', 'G', 'Ab']
 HALF_STEP_MANTISSA = np.pow(2, 1./12)     # equal tempermant, each note is octavebase * this
 IMAGESIZE=512
 
+def getSeconds(filename):
+  sample_rate, audio = wavfile.read(filename)
+  lchannel, rchannel = audio.T
+  seconds = lchannel.shape[0] / sample_rate
+  return seconds
+   
 def createFftMasks(filename):
   # filename="air-breath2.wav"
   folder = './masks/'

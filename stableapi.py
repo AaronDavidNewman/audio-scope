@@ -1,4 +1,5 @@
 import os
+import shutil
 import requests
 import base64
 import io
@@ -68,6 +69,7 @@ def clearDir(dir):
 
 # If this is false, we reuse the existing images
 createSd = True
+# if this is false, we reuse the existing masks
 createMasks = False
 if createMasks:
   createFftMasks("20seconds-sync.wav")
