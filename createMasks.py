@@ -75,6 +75,7 @@ STEPS_PER_OCTAVE = 12
 LETTER_NAMES = ['A', 'Bb', 'B' ,'C', 'Db', 'D', 'Eb', 'E', 'F', 'F#', 'G', 'Ab']
 HALF_STEP_MANTISSA = np.pow(2, 1./12)     # equal tempermant, each note is octavebase * this
 IMAGESIZE=512
+MASKRESIZE=1.05
 
 def getSeconds(filename):
   sample_rate, audio = wavfile.read(filename)
@@ -127,7 +128,20 @@ def createFftMasks(filename):
   xformx = np.linspace(0, 2 * np.pi, len(notesix))
   sample = 0
   fignum = 1
+  imgBufs = [None, None, None, None, None]
+  def slideImgBufs():
+    ll = len(imgBufs)
+    for i in range(ll - 1):
+      imgBufs[i + 1] = imgBufs[i]
+  
   slidingWindowSize=5
+  def blendBufs(buf1, buf2):
+    with Image.open(buf1) as mask1, Image.open(buf2) as mask2:
+      mask2 = mask2.resize((int(MASKRESIZE * IMAGESIZE), int(MASKRESIZE* IMAGESIZE)))
+      offset = int(MASKRESIZE * IMAGESIZE) - IMAGESIZE
+      mask2 = mask2.crop((offset, offset, IMAGESIZE + offset, IMAGESIZE + offset))
+      blended = Image.blend(mask1, mask2, 0.8)
+      return blended
   runningWindows = np.zeros((slidingWindowSize, len(notesix)))
   runningWindowIx = 0
   while sample < samples - windowSize:
@@ -159,7 +173,25 @@ def createFftMasks(filename):
     af.bar(xformx, yaggr, color=np.array((colors, colors, colors)).T)
     figstr = f'{fignum:04d}'
     filename = f'{folder}figure_{figstr}'
-    fig.savefig(filename)
+    buf = BytesIO()
+    slideImgBufs()
+    fig.savefig(buf, format='PNG')
+    imgBufs[0] = buf
+    if imgBufs[4] != None:
+      img1 = blendBufs(imgBufs[3], imgBufs[4])
+      img2 = blendBufs(imgBufs[1], imgBufs[2])
+      buf1 = BytesIO()
+      buf2 = BytesIO()
+      buf3 = BytesIO()
+      img1.save(buf1, format='PNG')
+      img2.save(buf2, format='PNG')
+      img3 = blendBufs(buf1, buf2)
+      img3.save(buf3, format='PNG')
+      buf4 = blendBufs(imgBufs[0], buf3)
+      buf4.save(f'{filename}.png')
+    else:
+      sv = Image.open(buf)
+      sv.save(f'{filename}.png')
     plt.close()
     sample += windowSize//2
     fignum += 1
