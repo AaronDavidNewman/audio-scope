@@ -3,6 +3,7 @@ import shutil
 import requests
 import base64
 import io
+from random import random
 import numpy as np
 from createMasks import getSeconds, createBlurredCircle, createFftMasks
 from PIL import Image, ImageChops
@@ -19,6 +20,15 @@ def getImageEncoding(fn):
   with open(fn, "rb") as image_file:
     encoded_string = base64.b64encode(image_file.read()).decode('utf-8')
   return encoded_string
+def moveFilterDirection(image, dir):
+  offset1 = 2
+  if dir > 0.5:
+    offset1 = -1 * offset1
+  image2 = image.resize((offset1 + IMAGESIZE, offset1 + IMAGESIZE))
+  image2 = image2.crop((2 * offset1, 2 * offset1, IMAGESIZE - 2 * offset1, IMAGESIZE - 2 * offset1))
+  return image2
+
+  
 def blendFilterImages(fn1, fn2, alpha, mode="RGB"):
   with Image.open(fn2) as image2, Image.open(fn1) as image1:
     image1 = image1.resize((IMAGESIZE, IMAGESIZE))
@@ -56,30 +66,34 @@ def blendImages(fn1, fn2, alpha, mode="RGB"):
     blended.save(buffer, format="PNG")
     img_data = base64.b64encode(buffer.getvalue())
     return img_data.decode('utf-8')
-  
-def callApi(imgfile, prompt, destImage, denoise, mask, invert, seed):
+
+def getSdImage(imgfile, prompt, denoise, mask, invert, seed):
   url="http://127.0.0.1:7860/sdapi/v1/img2img"
   payload = {
     "prompt": prompt,
     "steps": 20,
     "denoising_strength": denoise,
     "cfg_scale": 7.5,
-    "mask": mask,
     "seed": seed,
-    "sampler_name": "DPM++ 2M Karras",
-    "inpaint_full_res": False,
-    "inpainting_mask_invert": invert, 
-    "inpainting_fill": 1,
-    "mask_blur": 4
+    "sampler_name": "DPM++ 2M SDE",
   }
-
+  if mask != None:
+    payload['mask'] = mask
+    payload['inpaint_full_res'] = False
+    payload['inpainting_mask_invert'] = invert
+    payload['inpainting_fill'] = 1
+    payload['mask_blur'] = 4
   payload['init_images']=[imgfile]
 
   response = requests.post(url=url, json=payload)
   jr = response.json()
   for i in jr['images']:
     image = Image.open(io.BytesIO(base64.b64decode(i.split(",",1)[0])))
-    image.save(destImage)
+    return image
+
+def callApi(imgfile, prompt, destImage, denoise, mask, invert, seed):
+  image = getSdImage(imgfile, prompt, denoise, mask, invert, seed)
+  image.save(destImage)
 
 def clearDir(dir):
   for fn in os.listdir(dir):
@@ -94,6 +108,8 @@ inputWav = "poly1.wav"
 destFolder = './output/'
 inputImageFolder = './input/'
 srcImageFolder = './input-ordered/'
+direction = random()
+changeDirection = 0.11
 clearDir(srcImageFolder)
 imageFiles = os.listdir(inputImageFolder)
 # imageFiles.sort(key=lambda f: int(''.join(filter(str.isdigit, f))))
@@ -129,7 +145,6 @@ prompts = {
 promptCount = len(prompts)
 mask_count = len(os.listdir(maskFolder))
 
-sdSkip = 1
 sd_image_count = FPS * audioSeconds
 srcImageCount = len(os.listdir(srcImageFolder))
 iterationsThisPrompt = 0
@@ -147,6 +162,8 @@ blendedFiles = ['', '']
 # higher number gets more 'creative' output
 denoise_max = 0.7
 denoise_min = 0.1
+inputBlend = 1.0
+inputBlendStep = 0.1
 denoise = denoise_min
 framesSinceChange = 0
 sdDestFn = None
@@ -155,6 +172,8 @@ prevMaskIx = 0
 for x in range(maxIterations):
   # the prompt used for stable diffusion
   # to get all the images/prompts, the prompt/image space is mapped to size + 1
+  # if random() < changeDirection:
+  #   direction = random()
   promptIxIx = np.min(np.array([x, maxIterations - 1]))
   promptIx = np.min(np.array([promptCount, int(promptSpace[promptIxIx])]))
   # the source of original art to create diffusions from
@@ -183,41 +202,47 @@ for x in range(maxIterations):
   iterationsThisPrompt += 1
 
   # increase the volatility of the image as we get closer to min
-  denoise = denoise_min + (denoise_max - denoise_min) * ratRadius
+  denoise = denoise_min + (denoise_max - denoise_min) * ratRadius  
   lastPrompt = prompt
   srcFn = f'{srcImageFolder}f{srcImageIx:04d}.png'
   sdDestFn = f'{destFolder}img{sdImageIx:04d}.png'
   if srcFn != lastImageName:
-    print(f'now using image {srcFn}')
+    print(f'now blending {srcFn}')
     lastImageName = srcFn
+    inputBlend = inputBlendStep
+  if srcImageIx < 2:
     blendedFiles[0] = srcFn
-  radius = np.double(IMAGESIZE) * ratRadius * 2
-  radius = np.max(np.array([radius, 8.0]))
-  if x % sdSkip == 0 or len(blendedFiles[0]) == 0 or len(blendedFiles[1]) == 0:
-    if len(blendedFiles[0]) > 0 and len(blendedFiles[1]) > 0:
-      srcImage = blendImages(blendedFiles[0], blendedFiles[1], 0.5)
-    else:
-      srcImage = getImageEncoding(srcFn)
-    blendedFiles[0] = srcFn
-    print(f'mask radius is {radius} denoise is {denoise} x is {x}')
-    callApi(srcImage, prompt, sdDestFn, denoise, filterMask, invert, seed=x)
-    # invert = (1 + invert) % 2
-    blendedFiles[1] = blendedFiles[0]
-    blendedFiles[0] = sdDestFn
+    inputBlend = 1.0
+  if inputBlend < 1 and len(blendedFiles[0]) > 0 and len(blendedFiles[1]) > 0:
+    print(f'now blending {srcFn} {inputBlend} percent')
+    srcImage = getBlendedImage(blendedFiles[0], srcFn, inputBlend)
+    inputBlend += inputBlendStep
+  elif len(blendedFiles[0]) > 0 and len(blendedFiles[1]) > 0:
+    srcImage = getBlendedImage(blendedFiles[0], blendedFiles[1], 0.5)
   else:
-    fn1 = blendedFiles[0]
-    fn2 = blendedFiles[1]
-    with Image.open(fn1) as image1, Image.open(fn2) as image2:
-      filterRgb = filterImage.convert('RGB')
-      # filterRgb = ImageChops.invert(filterRgb)
-      blended = ImageChops.soft_light(image2, filterRgb)
-      # stats = ImageStat.Stat(filterImage)
-      # print(f'media  for mask is {stats.median}')
-      # blended = Image.blend(image2, filterRgb, 0.1)
-      blended = Image.blend(blended, image1, 0.7)
-      blended.save(sdDestFn)
-      blendedFiles[1] = blendedFiles[0]
-      blendedFiles[0] = sdDestFn
+    srcImage = getImageEncoding(srcFn)
+  if len(blendedFiles[0]) > 0 and len(blendedFiles[1]) > 0:
+    filterRgb = filterImage.convert('RGB')
+    if ratRadius < 0.4:
+      if x % 4 > 1:
+        filterRgb = ImageChops.invert(filterRgb)
+      blended = ImageChops.soft_light(srcImage, filterRgb)
+      srcImage = Image.blend(blended, srcImage, ratRadius)
+      srcImage = moveFilterDirection(srcImage, direction)
+    buffer = io.BytesIO()
+    srcImage.save(buffer, format="PNG")
+    img_data = base64.b64encode(buffer.getvalue())
+    srcImage = img_data.decode('utf-8')
+
+  print(f'mask radius is {ratRadius} denoise is {denoise} x is {x} image is {sdImageIx}')
+  mask = filterMask
+  if ratRadius < 0.2:
+    mask = None
+  callApi(srcImage, prompt, sdDestFn, denoise, mask, invert, seed=x)
+  # invert = (1 + invert) % 2
+  blendedFiles[1] = blendedFiles[0]
+  blendedFiles[0] = sdDestFn
+
 
 
 
