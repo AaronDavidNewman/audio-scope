@@ -1,8 +1,7 @@
 import numpy as np
 
 class AudioFrequency:
-  """Measure a specific frequency of an audio file"""
-
+  """Record a specific frequency of an audio file"""
   slidingWindow = 10
 
   def __init__(self, frequency, noteName, binIx, jsonObj = None):
@@ -11,6 +10,11 @@ class AudioFrequency:
     self.binIx = binIx
     self.samples = dict()
     self.indices = []
+    if jsonObj != None:
+      for sample in jsonObj['samples']:
+        ix = np.int64(sample['ix'])
+        self.samples[ix] = np.float64(sample['sample'])
+        self.indices.append(ix)
   
   def jsonString(self):
     rv = { 'frequency': self.frequency.item(), 

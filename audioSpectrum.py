@@ -10,26 +10,57 @@ class AudioSpectrum:
   fftWindow = 16384
   impulseWindow = 32
   beatWindowSize = 4096
-  def __init__(self, lbuffer, rbuffer, sampleRate):
+  """Music and audio analysis routines"""
+  def __init__(self, lbuffer, rbuffer, sampleRate, jsonObj=None):
     self.lbuffer  = lbuffer
     self.rbuffer = rbuffer
     self.sampleRate = sampleRate
     self.noteData = NoteFrequency()
     self.currentSample = 0
+    self.maxFft = 0
+    self.bufToBinIndexMap = dict()
     self.audioBufs = []
-    self.impulse = Impulse(self.impulseWindow)
+    self.loaded = False
+    impulseJson = None
+    if jsonObj != None and len(jsonObj['buffers'])>= len(self.noteData.frequencies):
+      self.loaded = True
+      self.maxFft = np.float64(jsonObj['maxFft'])
+      impulseJson = jsonObj['impulse']
+
+    self.impulse = Impulse(self.impulseWindow, jsonObj = impulseJson)
     self.firstnz = np.min([np.nonzero(self.lbuffer)[0][0],np.nonzero(self.rbuffer)[0][0]])
     for pitchIndex in range(len(self.noteData.frequencies)):
       freq = self.noteData.frequencies[pitchIndex]
       # windowIndex*(sampleRate/windowSize) = frequency, so 
       # windowIndex = (windowSize/sampleRate)*frequency
+      jsonFreq = None
+      if jsonObj != None and len(jsonObj['buffers'])>pitchIndex:
+        jsonFreq = jsonObj['buffers'][pitchIndex]
       binIx = np.int64((self.fftWindow / self.sampleRate) * freq)
-      buf = AudioFrequency(freq, self.noteData.noteNames[pitchIndex], binIx)
+      self.bufToBinIndexMap[binIx] = pitchIndex
+      buf = AudioFrequency(freq, self.noteData.noteNames[pitchIndex], binIx, jsonFreq)
       self.audioBufs.append(buf)
   def length(self):
     return len(self.lbuffer)
+  def frequencyBins(self):
+    return len(self.audioBufs)
+  def getFrequencyEnergyAtSample(self, sample):
+    energies = []
+    for buf in self.audioBufs:
+      if len(buf.indices) > 0:
+        lte = np.argmin(np.abs(np.array(buf.indices) - sample)) - 1
+        lte = 0 if lte < 0 else lte
+        if np.abs(buf.indices[lte] - sample) < self.fftWindow:
+          e = buf.samples[buf.indices[lte]]
+          energies.append(
+            {'bin': buf.binIx, 'energy': e / self.maxFft })
+    return energies
+  def impulseEnergyAtSample(self, sample):
+    return self.impulse.binValueAtIndex(sample)
   def jsonString(self):
-    rv = { 'buffers': [] }
+    rv = { 'sampleRate': self.sampleRate, 'firstnz': self.firstnz.item(), 
+          'maxFft': self.maxFft.item(),
+          'buffers': [] }
     for buf in self.audioBufs:
       rv['buffers'].append(buf.jsonString())
     rv['impulse'] = self.impulse.jsonString()
@@ -39,12 +70,15 @@ class AudioSpectrum:
     realsize = np.int64(self.fftWindow / 2)
     realbuf = np.abs(fbuf)[:realsize]
     return realbuf/self.fftWindow
-  def getFrequencies(self):
+  def computeFrequencies(self):
+    if self.loaded:
+      return
     sample = self.firstnz
     printCount = 0
+    printMod = np.int64(self.sampleRate / self.fftWindow) * 16 + 1
     while sample + self.fftWindow < self.lbuffer.shape[0]:
       printCount += 1
-      if printCount % self.sampleRate == 0:
+      if printCount % printMod == 0:
         print(f'frequency analysis sample {sample}')
       arl = self.lbuffer[sample:sample + self.fftWindow]
       arr = self.rbuffer[sample:sample + self.fftWindow]
@@ -52,9 +86,13 @@ class AudioSpectrum:
       comps = [far[buf.binIx] for buf in self.audioBufs]
       csort = np.argsort(np.array(comps))
       top10 = csort[-10:]
+      max = comps[top10[9]] 
+      self.maxFft = max if max > self.maxFft else self.maxFft
       [self.audioBufs[ix].record(sample, comps[ix]) for ix in top10]
       sample += np.int64(self.fftWindow / 2)
-  def getBeats(self):
+  def computeBeats(self):
+    if self.loaded:
+      return
     sample = self.firstnz
     beatWindow = np.zeros(self.beatWindowSize)
     runningTempo = 0

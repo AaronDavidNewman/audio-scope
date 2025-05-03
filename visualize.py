@@ -1,15 +1,39 @@
 import numpy as np
 from audioSpectrum import AudioSpectrum
+from frameObject import Frame
 from scipy.io import wavfile
 import json
 import os
+from pathlib import Path
 import time
 
 def main(filename):
+  jsonFolder = './json/'
+  audioFolder = './audio/'
+  imageFolder = './frames/'
+  FRAME_RATE = 8
+  if not os.path.exists(jsonFolder):
+    os.makedirs(jsonFolder)
+  if not os.path.exists(imageFolder):
+    os.makedirs(imageFolder)
+  for fn in os.listdir(imageFolder):
+    filepath = os.path.join(imageFolder, fn)
+    if os.path.isfile(filepath):
+        os.unlink(filepath)
+
   jsonFilename = filename.removesuffix('.wav')
-  jsonFilename += '.json'
+  jsonFilename = f'{jsonFolder}{jsonFilename}.json'
+  audioFilename = f'{audioFolder}{filename}'
+  loadedFromJson = False
   print(f'{jsonFilename}')
-  sampleRate, audio = wavfile.read(filename)
+  jsonFile = None
+  if Path(jsonFilename).is_file():
+    with open(jsonFilename) as f:
+      jsonContents = f.read()
+      jsonFile = json.loads(jsonContents)
+      loadedFromJson = True
+
+  sampleRate, audio = wavfile.read(audioFilename)
   lchannel, rchannel = audio.T
   lchannel = np.sqrt(np.int64(lchannel)** 2)
   rchannel = np.sqrt(np.int64(rchannel)** 2)
@@ -17,23 +41,31 @@ def main(filename):
   lchannel /= max
   rchannel /= max
   start = time.time()
-  spectrum = AudioSpectrum(lchannel, rchannel, sampleRate)  
-  spectrum.getFrequencies()
-  spectrum.getBeats()
+  spectrum = AudioSpectrum(lchannel, rchannel, sampleRate, jsonFile)  
+  spectrum.computeFrequencies()
+  spectrum.computeBeats()
   end = time.time()
-  print(f'elapsed time {end-start}')
-  jsonBuf = spectrum.jsonString()
+  imageIx = np.int64(spectrum.firstnz / sampleRate) * FRAME_RATE
+  sample = spectrum.firstnz
+  inc = np.int64(sampleRate / FRAME_RATE)
+  print(f'elapsed compute time {end-start}')
+  frame = Frame(sample, spectrum, bufSize=12)
+  while sample < lchannel.shape[0]:
+    fn = f'{imageFolder}image{imageIx:04d}.png'
+    frame.display(fn)
+    sample += inc
+    imageIx += 1
+    frame.add(sample)
   # print(f'{jsonBuf}')
-  jsonFile = os.path.splitext(filename)[0]+'.json'
-  with open(jsonFile, 'w') as jf:
-    json.dump(jsonBuf, jf)
+  jsonBuf = spectrum.jsonString()
+  if not loadedFromJson:
+    with open(jsonFilename, 'w') as jf:
+      json.dump(jsonBuf, jf)
 
   bbb=spectrum.impulse.binValueAtIndex(500000)
+  ccc = spectrum.getFrequencyEnergyAtSample(500000)
   print(f'{bbb}')
-  
-
-        # if eg[0] > 0:
-        #  print(f'energy sample {spectrum.index} for {spectrum.audioBufs[bufix].frequency} is {eg}')
+  print(f'{ccc}')
 
 # main("horn-e4.wav")
 main("whomp-time-gated.wav")
