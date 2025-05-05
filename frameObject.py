@@ -1,9 +1,13 @@
 import numpy as np
 import matplotlib.pyplot as plt
+from io import BytesIO
+from PIL import Image, ImageFilter, ImageEnhance
+
 class Frame:
   def __init__(self, sample, spectrum, bufSize = 5):
     self.spectrum = spectrum
     self.bufSize = bufSize
+    self.distanceFromBeat = 0
     self.bufIx = 0
     numFreqs = spectrum.frequencyBins()
     self.risingSize = np.int64(numFreqs / 2)
@@ -24,7 +28,9 @@ class Frame:
     self.bufIx += 1
   
   def add(self, sample):
-    background = self.spectrum.impulseEnergyAtSample(sample)['value']
+    energy = self.spectrum.impulseEnergyAtSample(sample)
+    background = energy['value']
+    self.distanceFromBeat = energy['between']
     rnd = np.random.rand(self.bufs[0].shape[0], self.bufs[0].shape[1])*0.95
     for bufIx in range(self.bufSize):
       buf = self.bufs[bufIx]
@@ -54,10 +60,19 @@ class Frame:
     fig = plt.figure(frameon=False, figsize=(5.3333,5.3333),dpi=96)
     ax = fig.add_axes([0,0,1,1])
     ax.set_axis_off()
-    ax.imshow(copy,  interpolation='bilinear', aspect='equal')
+    ax.contourf(copy,  cmap='coolwarm')
     # ax.matshow(copy)
-    fig.savefig(filename)
+    #  fig.savefig(filename)
+    buffer = BytesIO()    
+    plt.savefig(buffer, format='png')
+    plt.close()
+    with Image.open(buffer) as img:
+      enhancer = ImageEnhance.Sharpness(img)
+      sharpened = enhancer.enhance((self.distanceFromBeat * 2) + 0.5)
+      # print(f'sample distance={self.distanceFromBeat}')
+      # sharpened = img.filter(ImageFilter.SHARPEN)
+      sharpened.save(filename, format='png')
+
     plt.close(fig)
     # plt.show()
-    print(f'saved {filename}')
 

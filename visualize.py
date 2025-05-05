@@ -49,23 +49,20 @@ def main(filename):
   sample = spectrum.firstnz
   inc = np.int64(sampleRate / FRAME_RATE)
   print(f'elapsed compute time {end-start}')
+  jsonBuf = spectrum.jsonString()
+  if not loadedFromJson:
+    with open(jsonFilename, 'w') as jf:
+      json.dump(jsonBuf, jf)  
   frame = Frame(sample, spectrum, bufSize=12)
   while sample < lchannel.shape[0]:
     fn = f'{imageFolder}image{imageIx:04d}.png'
+    print(f'image {fn} sample {sample}')
     frame.display(fn)
     sample += inc
     imageIx += 1
     frame.add(sample)
   # print(f'{jsonBuf}')
-  jsonBuf = spectrum.jsonString()
-  if not loadedFromJson:
-    with open(jsonFilename, 'w') as jf:
-      json.dump(jsonBuf, jf)
 
-  bbb=spectrum.impulse.binValueAtIndex(500000)
-  ccc = spectrum.getFrequencyEnergyAtSample(500000)
-  print(f'{bbb}')
-  print(f'{ccc}')
 
 # main("horn-e4.wav")
-main("whomp-time-gated.wav")
+main("20seconds-sync.wav")

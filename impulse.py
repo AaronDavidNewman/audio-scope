@@ -31,13 +31,22 @@ class Impulse:
       self.max = np.max(np.array([values[binIndex], self.max]))
       # print(f'beats at {ix}:sample = {binSamples[binIndex]} value {self.valuesAt[binSamples[binIndex]]}')
     
+  # find the energy at the closest recorded time to sample parameter
   def binValueAtIndex(self, sample):
-    ix = np.int64(np.max(np.array([np.argmin(np.abs(np.array(self.indices) - np.int64(sample))) - 1, 0])))
-    value = self.valuesAt[self.indices[ix]]
-    if ix + 1 < len(self.indices):
+    # find highest index not higher than sample
+    ix = np.int64(np.argmin(np.abs(np.array(self.indices) - np.int64(sample))))
+    closest = self.indices[ix]
+    if ix > 0 and closest > sample:
+      ix -= 1
+      closest = self.indices[ix]
+    value = self.valuesAt[closest]
+    pmax = 0
+    # interpolate between samples 
+    if ix > 0 and ix + 1 < len(self.indices):
       p = (sample - self.indices[ix])/(self.indices[ix + 1] - self.indices[ix])      
       value = (value * p) + (1 - p) * self.valuesAt[self.indices[ix + 1]]
-    return ({'value': value / self.max, 'tempo': self.temposAt[self.indices[ix]] })
+      pmax = np.max(np.array([p, 1-p]))
+    return ({'value': value / self.max, 'tempo': self.temposAt[self.indices[ix]], 'between': pmax })
   
 
 
