@@ -11,10 +11,12 @@ class AudioSpectrum:
   impulseWindow = 32
   beatWindowSize = 4096
   """Music and audio analysis routines"""
-  def __init__(self, lbuffer, rbuffer, sampleRate, jsonObj=None):
+  def __init__(self, lbuffer, rbuffer, sampleRate, \
+               samplesPerWindow=2, jsonObj=None):
     self.lbuffer  = lbuffer
     self.rbuffer = rbuffer
     self.sampleRate = sampleRate
+    self.samplesPerWindow = samplesPerWindow
     self.noteData = NoteFrequency()
     self.currentSample = 0
     self.maxFft = 0
@@ -105,7 +107,7 @@ class AudioSpectrum:
       self.maxFft = max if max > self.maxFft else self.maxFft
       # Each audioBuf keeps track of its own samples
       [self.audioBufs[ix].record(sample, comps[ix]) for ix in top10]
-      sample += np.int64(self.fftWindow / 2)
+      sample += np.int64(self.fftWindow / self.samplesPerWindow)
   def computeBeats(self):
     if self.loaded:
       return

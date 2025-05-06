@@ -4,10 +4,15 @@ from io import BytesIO
 from PIL import Image, ImageFilter, ImageEnhance
 
 class Frame:
-  def __init__(self, sample, spectrum, bufSize = 5):
+  def __init__(self, sample, spectrum, bufSize = 5, frameRate=4):
     self.spectrum = spectrum
     self.bufSize = bufSize
+    self.frameRate = frameRate
+    # time increment between frames
+    self.increment = np.float64(spectrum.sampleRate / frameRate)
     self.distanceFromBeat = 0
+    self.startAngle = 0
+    self.tempo = np.float64(120)
     self.bufIx = 0
     numFreqs = spectrum.frequencyBins()
     self.risingSize = np.int64(numFreqs / 2)
@@ -30,7 +35,9 @@ class Frame:
   def add(self, sample):
     energy = self.spectrum.impulseEnergyAtSample(sample)
     background = energy['value']
+    # instantaneous distance from peaks, and running tempo calculation
     self.distanceFromBeat = energy['between']
+    self.tempo = energy['tempo']
     rnd = np.random.rand(self.bufs[0].shape[0], self.bufs[0].shape[1])*0.95
     for bufIx in range(self.bufSize):
       buf = self.bufs[bufIx]
@@ -53,17 +60,17 @@ class Frame:
       self.bufs[self.bufIx] = frequencyBins * self.shape
     self.bufIx = (self.bufIx + 1) % self.bufSize
 
-  def display(self, filename):    
+  def display(self, filename):
     copy = np.matrix.copy(self.bufs[0])
     for ix in range(1, self.bufSize):
       copy += self.bufs[ix]
     fig = plt.figure(frameon=False, figsize=(5.3333,5.3333),dpi=96)
     ax = fig.add_axes([0,0,1,1])
     ax.set_axis_off()
-    ax.contourf(copy,  cmap='coolwarm')
+    ax.contourf(copy,  cmap='Spectral')
     # ax.matshow(copy)
     #  fig.savefig(filename)
-    buffer = BytesIO()    
+    buffer = BytesIO()
     plt.savefig(buffer, format='png')
     plt.close()
     with Image.open(buffer) as img:

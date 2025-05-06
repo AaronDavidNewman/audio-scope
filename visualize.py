@@ -12,6 +12,7 @@ def main(filename):
   audioFolder = './audio/'
   imageFolder = './frames/'
   FRAME_RATE = 8
+  SAMPLES_PER_WINDOW = 3
   if not os.path.exists(jsonFolder):
     os.makedirs(jsonFolder)
   if not os.path.exists(imageFolder):
@@ -41,7 +42,8 @@ def main(filename):
   lchannel /= max
   rchannel /= max
   start = time.time()
-  spectrum = AudioSpectrum(lchannel, rchannel, sampleRate, jsonFile)  
+  spectrum = AudioSpectrum(lchannel, rchannel, sampleRate, samplesPerWindow = SAMPLES_PER_WINDOW, \
+                          jsonObj = jsonFile)
   spectrum.computeFrequencies()
   spectrum.computeBeats()
   end = time.time()
@@ -53,7 +55,7 @@ def main(filename):
   if not loadedFromJson:
     with open(jsonFilename, 'w') as jf:
       json.dump(jsonBuf, jf)  
-  frame = Frame(sample, spectrum, bufSize=12)
+  frame = Frame(sample, spectrum, bufSize=12, frameRate = FRAME_RATE)
   while sample < lchannel.shape[0]:
     fn = f'{imageFolder}image{imageIx:04d}.png'
     print(f'image {fn} sample {sample}')
@@ -65,4 +67,4 @@ def main(filename):
 
 
 # main("horn-e4.wav")
-main("20seconds-sync.wav")
+main("whomp-time-gated.wav")
