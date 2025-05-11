@@ -15,6 +15,7 @@ class AudioSpectrum:
                samplesPerWindow=2, jsonObj=None):
     self.lbuffer  = lbuffer
     self.rbuffer = rbuffer
+    self.numSamples = lbuffer.shape[0]
     self.sampleRate = sampleRate
     self.samplesPerWindow = samplesPerWindow
     self.noteData = NoteFrequency()

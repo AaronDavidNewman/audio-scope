@@ -1,6 +1,6 @@
 import numpy as np
 from audioSpectrum import AudioSpectrum
-from frameObject import Frame
+from frameObject import ContourFrame, PolyFrame
 from scipy.io import wavfile
 import json
 import os
@@ -11,8 +11,8 @@ def main(filename):
   jsonFolder = './json/'
   audioFolder = './audio/'
   imageFolder = './frames/'
-  FRAME_RATE = 8
-  SAMPLES_PER_WINDOW = 3
+  FRAME_RATE = 16
+  SAMPLES_PER_WINDOW = 4
   if not os.path.exists(jsonFolder):
     os.makedirs(jsonFolder)
   if not os.path.exists(imageFolder):
@@ -55,7 +55,7 @@ def main(filename):
   if not loadedFromJson:
     with open(jsonFilename, 'w') as jf:
       json.dump(jsonBuf, jf)  
-  frame = Frame(sample, spectrum, bufSize=12, frameRate = FRAME_RATE)
+  frame = PolyFrame(sample, spectrum, bufSize=12, frameRate = FRAME_RATE)
   while sample < lchannel.shape[0]:
     fn = f'{imageFolder}image{imageIx:04d}.png'
     print(f'image {fn} sample {sample}')
@@ -67,4 +67,4 @@ def main(filename):
 
 
 # main("horn-e4.wav")
-main("whomp-time-gated.wav")
+main("cicada-soul3.wav")
