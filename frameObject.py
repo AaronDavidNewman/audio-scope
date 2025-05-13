@@ -1,7 +1,8 @@
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib.collections import LineCollection
 from io import BytesIO
-from PIL import Image, ImageFilter, ImageEnhance, ImageDraw, ImageColor
+from PIL import Image, ImageFilter, ImageEnhance, ImageDraw, ImageChops
 
 class ContourFrame:
   def __init__(self, sample, spectrum, bufSize = 5, frameRate=4):
@@ -78,7 +79,6 @@ class ContourFrame:
     #  fig.savefig(filename)
     buffer = BytesIO()
     plt.savefig(buffer, format='png')
-    plt.close()
     with Image.open(buffer) as img:
       # also sharpen the image as we get closer to the beat
       enhancer = ImageEnhance.Sharpness(img)
@@ -98,7 +98,7 @@ class PolyFrame:
     self.bufSize = bufSize
     self.frameRate = frameRate
     self.colormap =  [(ar[0], ar[1], ar[2]) for ar in plt.colormaps['hot'](range(0,256))]
-    self.bgcolormap = [(ar[0], ar[1], ar[2]) for ar in plt.colormaps['coolwarm'](range(0,256))]
+    self.bgcolormap = [(ar[0], ar[1], ar[2]) for ar in plt.colormaps['YlOrRd'](range(0,256))]
     self.distanceFromBeat = 0
     self.previousColor = 128
     self.tempo = np.float64(120)
@@ -136,61 +136,86 @@ class PolyFrame:
     hue = np.int32((self.previousColor + hue)/2)
     hue = min(255,(max(hue, 0)))
 
-    # Make many legs of the spider, based on how loud it is here
-    anglecount = np.int32(3 + (8*(self.background) - 1))
-    angles = []
     # create the background color, also based on volume
     bgcolor = np.int32((128 + 128*self.background)/2)
     self.previousColor = hue
     # rotate the figure slowly, so the legs aren't always in the same place if 
     # there isn't a lot of variance in the spectrum
-    startangle = 2 * np.pi * (sample/self.spectrum.numSamples)
-    for angle in range(anglecount):
-      # angles.append(startangle + angle * (np.pi/2 * angle + (np.pi/2)*self.background))
-      angles.append(startangle + angle * (np.pi/4))
-    # create a blank image with the background color
-    bg = np.int32(np.array(self.bgcolormap[bgcolor]) * 256)
-    img = Image.new(mode='RGB', size=(size, size), color=tuple(bg))
-    dr = ImageDraw.Draw(img)
     # create the target background, expand the center based on the tempo
     samplesPerTempo = (self.spectrum.sampleRate / (self.tempo / 60)) * 16
     position = sample % samplesPerTempo
-    tempoAngle = (1 + np.cos((2 * np.pi * position)/samplesPerTempo)) / 2
-    radius = (size/2) * tempoAngle
+    tempoAngle = (2 * np.pi * position)/samplesPerTempo
+    tempoRadius = (1 + np.cos(tempoAngle) / 2)
+    radius = (size/2) * tempoRadius
+
+
+    # Make many legs of the spider, based on how loud it is here
+    anglecount = np.int32(3 + (12*(self.background) - 1))
+    angles = []
+    startangle = 2 * np.pi * (sample/self.spectrum.numSamples)
+    for angle in range(anglecount):
+      # angles.append(startangle + angle * (np.pi/2 * angle + (np.pi/2)*self.background))
+      angles.append(startangle + angle*(tempoAngle/anglecount))
+    # create a blank image with the background color
+    bg = np.int32(np.array(self.bgcolormap[bgcolor]) * 256)
+    img = Image.new(mode='RGB', size=(size, size), color=tuple(bg))
+    segcount=100
+    dr = ImageDraw.Draw(img)
+    fig = plt.figure(frameon=False, figsize=(5.3333,5.3333),dpi=96)
+    a = fig.add_axes([0,0,1,1])    
+    a.set_axis_off()
+    a.set_xlim(0,512)
+    a.set_ylim(0,512)
+
     for circle in range(5):
       bgcolor = np.int32(bgcolor * 0.95)
       radius = np.int32(radius * 0.8)
       fill = np.int32(np.array(self.bgcolormap[bgcolor])*256)
       dr.circle((size/2, size/2), radius, fill=tuple(fill))
+    segs = np.array(np.empty)
+    widths = np.array(np.empty)
     for angle in angles:
-      rects = []
       lastX = np.float64(size/2)
       lastY = np.float64(size/2)
       w = size/6
       h = np.int32(8 + 8*(binCount - freqIx[0])/binCount)
       # starta = freqIx[0] / binCount
       for bin in freqIx[:5]:
-        pts = []
         div = (bin + 1)/(binCount + 1)
-        x1 = np.cos(angle*(div))*w+lastX
-        y1 = np.sin(angle*(div))*w+lastY
-        x2 = np.cos(angle*(div) - np.pi)*h+lastX
-        y2 = np.cos(angle*(div) - np.pi)*h+lastY
-        x3 = np.cos(angle*(div) - np.pi)*h + x1
-        y3 = np.cos(angle*(div)- np.pi)*h + y1
-        pts.append((lastX, lastY))
-        pts.append((x1, y1))
-        pts.append((x3,y3))
-        pts.append((x2, y2))
-        rects.append(pts)
+        x1 = np.cos(angle + (2*np.pi*div))*w+lastX
+        y1 = np.sin(angle+(2*np.pi*div))*w+lastY
+        # x2 = np.cos(angle*(div) - np.pi)*h+lastX
+        # y2 = np.cos(angle*(div) - np.pi)*h+lastY
+        # x3 = np.cos(angle*(div) - np.pi)*h + x1
+        # y3 = np.cos(angle*(div)- np.pi)*h + y1
+        xxs = np.linspace(lastX, x1, segcount)
+        yys = np.linspace(lastY, y1, segcount)
+        pts1 = np.array((xxs, yys)).T.reshape(-1, 1, 2)
+        lasth = h
+        lastw = w
+        h = 2*h/3
+        w = w/2
+        if len(segs.shape) == 0:
+          segs = np.concatenate([pts1[:-1], pts1[1:]], axis=1)
+          widths = 1+np.linspace(lasth, h, segcount)
+        else:
+          newsegs = np.concatenate([pts1[:-1], pts1[1:]], axis=1) 
+          widths =  np.concatenate((widths, 1+np.linspace(h, h-2, segcount)))
+          segs = np.concatenate((segs, newsegs))        
         lastX = x1
         lastY = y1
-        h = 2*h / 3
-        w = 2*w / 3
-      for rect in rects:
-        color = np.int64(np.array(self.colormap[hue])*256)
-        dr.polygon(rect, fill=tuple(color))
+        color = np.array(self.colormap[hue])
+        lc = LineCollection(segs, linewidths=widths,color=color)
+        lc.set_capstyle('round')
+    a.add_collection(lc)
     self.tempoSample = sample
+    buffer = BytesIO()
+    plt.savefig(buffer, format='png')
+    with Image.open(buffer) as img1:
+      rgb = img1.convert('RGB')
+      img = ImageChops.darker(img, rgb)
+    plt.close(fig)
+
     return img
   
   # Get the FFT frequencies for this sample

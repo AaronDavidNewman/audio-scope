@@ -1,64 +1,64 @@
-import matplotlib.pyplot as plt
 import numpy as np
-import matplotlib.patches as patches
-import scipy as sp
-from PIL import Image, ImageDraw, ImageEnhance
+from matplotlib.collections import LineCollection
+import matplotlib.pyplot as plt
+binCount = 82
+bins = [14, 4, 24, 7, 18]
+lastX = 256
+lastY = 256
+w=128
+angle = 2*np.pi
+h = 12
 
-
-SIZE=10
-MAXIX = 2
-
-x = list(plt.colormaps)
-
-
-def f(x, y):
-    return np.sin(x) ** 10 + np.cos(10 + y * x)
-print(f'{x}')
-cmap = plt.colormaps['inferno']
-print(f'{cmap}')
-w = 128
-h = 16
-binCount = 84
-bins = [4, 15, 23]
-rects = []
-lastX = np.float64(256)
-lastY = np.float64(256)
+pts=[]
+rects=[]
+fig,a = plt.subplots()
+pts.append((lastX, lastY))
+allLcs = []
+segs = np.array(np.empty)
+widths = np.array(np.empty)
+segcount = 100
 for bin in bins:
-  pts = []
-  x1 = np.cos(2*np.pi*(bin/binCount))*w+lastX 
-  y1 = np.sin(2*np.pi*(bin/binCount))*w+lastY
-  x2 = np.cos(2*np.pi*(bin/binCount) - np.pi)*h+lastX
-  y2 = np.cos(2*np.pi*(bin/binCount) - np.pi)*h+lastY
-  x3 = np.cos(2*np.pi*(bin/binCount) - np.pi)*h + x1
-  y3 = np.cos(2*np.pi*(bin/binCount)- np.pi)*h + y1
-  pts.append((lastX, lastY))
-  pts.append((x1, y1))
-  pts.append((x3,y3))
-  pts.append((x2, y2))
-  rects.append(pts)
-  lastX = x1
-  lastY = y1
-  h = h / 2
-  w = w / 2
+  div = bin/binCount
+  x1 = np.cos(angle*(div))*(w)+lastX
+  y1 = np.sin(angle*(div))*(w)+lastY
+  xxs = np.linspace(lastX, x1, segcount)
+  yys = np.linspace(lastY, y1, segcount)
+  lasth = h
+  lastw = w
+  h = 2*h/3
+  w = w/2
+  pts1 = np.array((xxs, yys)).T.reshape(-1, 1, 2)
+  if len(segs.shape) == 0:
+    segs = np.concatenate([pts1[:-1], pts1[1:]], axis=1)
+    widths = 1+np.linspace(lasth, h, segcount)
+  else:
+    newsegs = np.concatenate([pts1[:-1], pts1[1:]], axis=1) 
+    widths =  np.concatenate((widths, 1+np.linspace(h, h-2, segcount)))
 
-def drawRect(dr, pts):
-  dr.polygon(pts, fill='red')
-  # dr.line((pts[0], pts[1]), fill='red')
-  # dr.line((pts[1], pts[3]), fill='red')
-  # dr.line((pts[3], pts[2]), fill='red')
-  # dr.line((pts[2], pts[0]), fill='red')
-   
-# X, Y = np.meshgrid(x, y)
-# Z = f(X, Y) # temperature
-# plt.figsize=(8, 8)
-# plt.axis('equal')
-X = [pt[0] for pt in pts]
-Y = [pt[1] for pt in pts]
-img = Image.new(mode='RGB', size=(512, 512))
-for rect in rects:
-  dr = ImageDraw.Draw(img)
-  print(f'rect: {rect}')
-  drawRect(dr, rect)
+    print(f'{segs.shape} {newsegs.shape}')
+    segs = np.concatenate((segs, newsegs))
+  lastX = np.cos(angle*(div))*lastw+lastX
+  lastY = np.sin(angle*(div))*lastw+lastY
+  # segcount = np.int64(4*segcount/5)
+  # print(f'calc shape {segs.shape} yys shape {yys.shape} pts {pts1.shape}')
 
-img.show()
-img
+lc = LineCollection(segs, linewidths=widths,color='blue')
+lc.set_capstyle('round')
+print(f'lcshape {segs.shape}')
+a.add_collection(lc)
+
+
+x = np.linspace(0,4*np.pi,100)
+y = np.cos(x)
+lwidths=1+x[:-1]
+ar = np.array([x,y])
+art = ar.T
+arts = art.reshape(-1, 1, 2)
+print(f'ar: {ar.shape} art: {art.shape}  arts: {arts.shape} arts5s:{arts[5].shape}')
+print(f'arts 5, 0, 1: {arts[5][0][1]} args5: {arts[5]} ar0: {art[0]}')
+points = np.array([x, y]).T.reshape(-1, 1, 2)
+segments = np.concatenate([points[:-1], points[1:]], axis=1)
+print(f'segs: {segments.shape}')
+a.set_xlim(0,512)
+a.set_ylim(0,512)
+plt.show()

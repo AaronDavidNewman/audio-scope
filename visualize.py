@@ -47,10 +47,10 @@ def main(filename):
   spectrum.computeFrequencies()
   spectrum.computeBeats()
   end = time.time()
-  imageIx = np.int64(spectrum.firstnz / sampleRate) * FRAME_RATE
+  imageIx = np.int64((spectrum.firstnz / sampleRate) * FRAME_RATE)
   sample = spectrum.firstnz
   inc = np.int64(sampleRate / FRAME_RATE)
-  print(f'elapsed compute time {end-start}')
+  print(f'firstSample: {spectrum.firstnz} elapsed compute time {end-start}')
   jsonBuf = spectrum.jsonString()
   if not loadedFromJson:
     with open(jsonFilename, 'w') as jf:
@@ -67,4 +67,4 @@ def main(filename):
 
 
 # main("horn-e4.wav")
-main("cicada-soul3.wav")
+main("ween24-2-softer.wav")
