@@ -9,3 +9,7 @@ output/
 /input
 /input-ordered
 /blended-test
+/__pycache__
+/json
+/audio
+/.vscode

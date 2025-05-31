@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 from impulse import Impulse
 
 class AudioSpectrum:
-  fftWindow = 16384
+  fftWindow = 8192*2
   impulseWindow = 32
   beatWindowSize = 4096
   """Music and audio analysis routines"""
@@ -31,9 +31,10 @@ class AudioSpectrum:
     self.loaded = False
     impulseJson = None
     if jsonObj != None and len(jsonObj['buffers'])>= len(self.noteData.frequencies):
-      self.loaded = True
-      self.maxFft = np.float64(jsonObj['maxFft'])
-      impulseJson = jsonObj['impulse']
+      if 'samplesPerWindow' in jsonObj and jsonObj['samplesPerWindow'] == self.samplesPerWindow:
+        self.loaded = True
+        self.maxFft = np.float64(jsonObj['maxFft'])
+        impulseJson = jsonObj['impulse']
 
     self.impulse = Impulse(self.impulseWindow, jsonObj = impulseJson)
     self.firstnz = np.min([np.nonzero(self.lbuffer)[0][0],np.nonzero(self.rbuffer)[0][0]])
@@ -52,6 +53,12 @@ class AudioSpectrum:
     return len(self.lbuffer)
   def frequencyBins(self):
     return len(self.audioBufs)
+  def graphArray(self, ar):
+      npar = np.array(ar)
+      fig, ax = plt.subplots()
+      t = np.arange(npar.shape[0])
+      ax.plot(t, npar)
+      plt.show()
   # Find the dominant frequencies at a specific sample
   def getFrequencyEnergyAtSample(self, sample):
     energies = []
@@ -69,7 +76,8 @@ class AudioSpectrum:
   def impulseEnergyAtSample(self, sample):
     return self.impulse.binValueAtIndex(sample)
   def jsonString(self):
-    rv = { 'sampleRate': self.sampleRate, 'firstnz': self.firstnz.item(), 
+    rv = {  'samplesPerWindow': self.samplesPerWindow,
+      'sampleRate': self.sampleRate, 'firstnz': self.firstnz.item(), 
           'maxFft': self.maxFft.item(),
           'buffers': [] }
     for buf in self.audioBufs:
@@ -99,7 +107,7 @@ class AudioSpectrum:
       # far contains values for each FFT frequency (bin).  Put them into 
       # an array for each note (audioBufs), where 0 contains energy for A0, etc
       comps = [far[buf.binIx] for buf in self.audioBufs]
-      # sort these by value
+      
       csort = np.argsort(np.array(comps))
       top10 = csort[-10:]
       max = comps[top10[9]]

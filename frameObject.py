@@ -119,7 +119,7 @@ class PolyFrame:
     self.background = energy['value']
     # instantaneous distance from peaks, and running tempo calculation
     self.distanceFromBeat = energy['between']
-    self.tempo = energy['tempo'] # not directly used
+    self.tempo = energy['tempo']
 
   def tupletfyRect(self,rect):
     nrect = []
@@ -166,7 +166,7 @@ class PolyFrame:
     a.set_axis_off()
     a.set_xlim(0,512)
     a.set_ylim(0,512)
-
+    # create concentric circles
     for circle in range(5):
       bgcolor = np.int32(bgcolor * 0.95)
       radius = np.int32(radius * 0.8)
@@ -180,19 +180,19 @@ class PolyFrame:
       w = size/6
       h = np.int32(8 + 8*(binCount - freqIx[0])/binCount)
       # starta = freqIx[0] / binCount
+      # connect a line from the center in the direction of the pitch
+      # on the circle of 5ths.  Then connect that line to another 
+      # line for the next-loudest overtone
       for bin in freqIx[:5]:
         div = (bin + 1)/(binCount + 1)
         x1 = np.cos(angle + (2*np.pi*div))*w+lastX
         y1 = np.sin(angle+(2*np.pi*div))*w+lastY
-        # x2 = np.cos(angle*(div) - np.pi)*h+lastX
-        # y2 = np.cos(angle*(div) - np.pi)*h+lastY
-        # x3 = np.cos(angle*(div) - np.pi)*h + x1
-        # y3 = np.cos(angle*(div)- np.pi)*h + y1
         xxs = np.linspace(lastX, x1, segcount)
         yys = np.linspace(lastY, y1, segcount)
         pts1 = np.array((xxs, yys)).T.reshape(-1, 1, 2)
         lasth = h
         lastw = w
+        # make each line smaller, to give the spider leg effect
         h = 2*h/3
         w = w/2
         if len(segs.shape) == 0:
@@ -234,7 +234,135 @@ class PolyFrame:
     self.image = self.createBinImage(freqIx, sample)
 
   def display(self, filename):
-    if filename=='./frames/image0634.png':
-      print('ouch')
     self.image.save(filename, format='png')
     # plt.show()
+
+class spirographFrames:
+  HIST_SIZE = 5 # size of history buffer in frames
+  COLOR_BINS = 12
+  BEATS_RIPPLE = 16
+  def __init__(self, sample, spectrum, bufSize = 5, frameRate=4):
+    self.spectrum = spectrum
+    # the accumulation buffer that smooths the samples
+    self.bufSize = bufSize
+    self.frameRate = frameRate
+    # how far from the beat (peak) the last sample was
+    self.distanceFromBeat = 0
+    self.histSize = self.HIST_SIZE
+    # binIxHist keeps a list of bins for some number of samples
+    # binValHist keeps a list of values for some number of samples
+    self.binIxHist = []
+    self.binValHist = []
+    self.binEnergyHist = []
+    self.binIx = 0
+    # sqrt to make the colors in the middle more promninent
+    colorlin = (np.linspace(0, 1, (self.COLOR_BINS+1))**0.5)*256
+    for i in range(self.histSize):
+      bins = [0]
+      vals = [0]
+      self.binIxHist.append(bins)
+      self.binValHist.append(vals)
+      self.binEnergyHist.append(0)
+    self.colormap =  [(ar[0], ar[1], ar[2]) for ar in plt.colormaps['gist_rainbow'](np.int32(colorlin))]
+    self.tempo = np.float64(120)  # default starting tempo
+    self.add(sample)
+    
+  def getEnergy(self, sample):
+    energy = self.spectrum.impulseEnergyAtSample(sample)
+    self.energy = energy['value']
+    self.binEnergyHist[self.binIx] = self.energy
+    # instantaneous distance from peaks, and running tempo calculation
+    self.distanceFromBeat = energy['between']
+    self.tempo = energy['tempo'] 
+
+  # Get the FFT frequencies for this sample
+  def getFrequencyBins(self, sample):
+    spectrum = self.spectrum
+    # {'bin': buf.binIx, 'energy': e / self.maxFft }
+    freqs = spectrum.getFrequencyEnergyAtSample(sample)
+    bins = []
+    binvals = []
+    for freq in freqs:
+      binIx = self.spectrum.bufToBinIndexMap[freq['bin']]
+      # binMax = self.spectrum.audioBufs[binIx].binMax
+      binvals.append(freq['energy'])
+      bins.append(freq['bin'])
+    self.binIxHist[self.binIx] = bins
+    self.binValHist[self.binIx] = binvals
+    self.binIx = (self.binIx + 1) % self.histSize
+
+  def add(self, sample):
+    # diminsh past bins in the history by 1/2
+    for i in range(self.histSize):
+      bins = self.binValHist[i]
+      for j in range(len(bins)):
+        bins[j] *= 0.5
+      self.binEnergyHist[i] *= 0.85
+
+    self.getFrequencyBins(sample)
+    self.getEnergy(sample)
+    self.image = self.createBinImage(sample)
+
+  def createBinImage(self, sample):
+    # change the radius of the outer circle with the tempo
+    samplesPerTempo = (self.spectrum.sampleRate / (self.tempo / 60)) * self.BEATS_RIPPLE
+    position = (sample % samplesPerTempo)/samplesPerTempo
+    X = np.zeros((12 + 1, 12 + 1))
+    fig = plt.figure(figsize=(5.334, 5.334), dpi=96)
+    a = fig.add_axes([0,0,1,1])
+    a.set_xlim(12)
+    a.set_ylim(12)
+    a.set_axis_off()
+    # make blocks based on overall energy average with bin energy
+    for i in range(self.histSize):
+      bins = self.binIxHist[i]
+      binvals = self.binValHist[i]
+      for j in range(len(bins)):
+        bc = bins[j]
+        val = (binvals[j] + self.binEnergyHist[i]) / 2
+        yval = np.int32(self.COLOR_BINS * val)
+        xpos = yval + np.abs(i - self.binIx)
+        if (xpos % 2) == 0:
+          xpos = np.int32((self.COLOR_BINS / 2) - (xpos / 2))
+        else:
+          xpos = np.int32((self.COLOR_BINS / 2) + (xpos / 2))
+        xpos = self.COLOR_BINS if xpos > self.COLOR_BINS else xpos
+        xpos = 0 if xpos < 0 else xpos
+        X[(bc + i) % self.COLOR_BINS, xpos] += yval
+    a.imshow(X, cmap='Blues', interpolation='gaussian')
+    buffer1 = BytesIO()
+    fig.savefig(buffer1, format='png')    
+    # a.imshow(X, cmap='Blues')
+    c1 = np.linspace(0, np.pi * 2, 1000)
+    c2 = np.linspace(0, np.pi *14, 1000)
+    r1=5 - position  # slighly change size with tempo
+    r2=3
+    lwidth = self.histSize
+    numFreqs = self.spectrum.frequencyBins()
+    for i in range(self.histSize):
+      bins = self.binIxHist[i]
+      binvals = self.binValHist[i]
+      for j in range(len(bins)):
+        b = fig.add_axes([0,0,1,1])
+        b.set_axis_off()
+        bc = np.float32(bins[j])/numFreqs
+        val = binvals[j]
+        yval = self.COLOR_BINS * val
+        XX = (np.array(r1*np.cos(c1) + bc*yval*np.cos(c2)))*val
+        YY = (np.array(r1*np.sin(c1) + bc*yval*np.sin(c2)))*val
+        b.plot(XX,YY, color=self.colormap[np.min((np.int32(yval), self.COLOR_BINS))], linewidth=lwidth)
+      lwidth = lwidth - 1
+    buffer2 = BytesIO()
+    fig.savefig(buffer2, format='png')
+    with Image.open(buffer2) as image2:
+      with Image.open(buffer1) as image1:
+        img = ImageChops.darker(image2, image1)
+
+    plt.close(fig)
+    return img
+  def display(self, filename):
+    self.image.save(filename, format='png')
+
+
+
+    

@@ -1,6 +1,6 @@
 import numpy as np
 from audioSpectrum import AudioSpectrum
-from frameObject import ContourFrame, PolyFrame
+from frameObject import ContourFrame, PolyFrame, spirographFrames
 from scipy.io import wavfile
 import json
 import os
@@ -11,7 +11,7 @@ def main(filename):
   jsonFolder = './json/'
   audioFolder = './audio/'
   imageFolder = './frames/'
-  FRAME_RATE = 16
+  FRAME_RATE = 12
   SAMPLES_PER_WINDOW = 4
   if not os.path.exists(jsonFolder):
     os.makedirs(jsonFolder)
@@ -44,6 +44,7 @@ def main(filename):
   start = time.time()
   spectrum = AudioSpectrum(lchannel, rchannel, sampleRate, samplesPerWindow = SAMPLES_PER_WINDOW, \
                           jsonObj = jsonFile)
+  loadedFromJson = spectrum.loaded
   spectrum.computeFrequencies()
   spectrum.computeBeats()
   end = time.time()
@@ -55,7 +56,7 @@ def main(filename):
   if not loadedFromJson:
     with open(jsonFilename, 'w') as jf:
       json.dump(jsonBuf, jf)  
-  frame = PolyFrame(sample, spectrum, bufSize=12, frameRate = FRAME_RATE)
+  frame = spirographFrames(sample, spectrum, bufSize=12, frameRate = FRAME_RATE)
   while sample < lchannel.shape[0]:
     fn = f'{imageFolder}image{imageIx:04d}.png'
     print(f'image {fn} sample {sample}')
@@ -67,4 +68,4 @@ def main(filename):
 
 
 # main("horn-e4.wav")
-main("ween24-2-softer.wav")
+main("cicada-soul3.wav")
